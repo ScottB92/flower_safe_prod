@@ -5,6 +5,11 @@
     {
       "src": "api/*.py",
       "use": "@vercel/python"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
     }
   ],
   "functions": {
@@ -13,6 +18,7 @@
   },
   "routes": [
     { "src": "/api/index", "dest": "/api/index.py" },
-    { "src": "/api/flower-check", "dest": "/api/flower-check.py" }
+    { "src": "/api/flower-check", "dest": "/api/flower-check.py" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
