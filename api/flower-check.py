@@ -8,6 +8,9 @@ from openai import OpenAI
 
 p = inflect.engine()
 
+# -----------------------------
+# DATABASE
+# -----------------------------
 SAFE_FLOWERS = {
     "astilbe": "✅ Astilbe is safe for cats and dogs.",
     "erica": "✅ Erica is pet-friendly.",
@@ -42,6 +45,9 @@ TOXIC_FLOWERS = {
 
 FLOWERS = {**SAFE_FLOWERS, **TOXIC_FLOWERS}
 
+# -----------------------------
+# OPENAI CLIENT
+# -----------------------------
 def get_client():
     key = os.getenv("OPENAI_API_KEY")
     if not key:
@@ -58,23 +64,38 @@ def ask_openai(messages):
     )
     return response.choices[0].message.content.strip()
 
+# -----------------------------
+# RAG LOGIC
+# -----------------------------
 @lru_cache(maxsize=200)
 def rag_flower_safety(flower):
     flower_key = (flower or "").strip().lower()
 
     if not flower_key:
-        return {"verified": False, "source": "error", "message": "Invalid flower name"}
+        return {
+            "verified": False,
+            "source": "error",
+            "message": "Invalid flower name"
+        }
 
-    # direct match
+    # Direct DB match
     if flower_key in FLOWERS:
-        return {"verified": True, "source": "database", "message": FLOWERS[flower_key]}
+        return {
+            "verified": True,
+            "source": "database",
+            "message": FLOWERS[flower_key]
+        }
 
-    # fuzzy match
+    # Fuzzy match
     match = get_close_matches(flower_key, FLOWERS.keys(), n=1, cutoff=0.75)
     if match:
-        return {"verified": True, "source": "database", "message": FLOWERS[match[0]]}
+        return {
+            "verified": True,
+            "source": "database",
+            "message": FLOWERS[match[0]]
+        }
 
-    # fallback to LLM
+    # LLM fallback
     examples = []
     for name, desc in list(FLOWERS.items())[:10]:
         examples.append(f"- {name}: {desc}")
@@ -83,8 +104,9 @@ def rag_flower_safety(flower):
 
     system_msg = (
         "You are a flower safety assistant. "
-        "If the flower is in the database, use that. "
-        "If not, answer using general knowledge AND begin your message with '(UNVERIFIED - not found in DB)'."
+        "If the flower appears in the database context, use that. "
+        "If not, answer using general knowledge and begin the message with: "
+        "'(UNVERIFIED - not found in DB)'"
     )
 
     user_msg = f"Database:\n{db_context}\n\nIs '{flower}' safe for pets?"
@@ -96,6 +118,7 @@ def rag_flower_safety(flower):
         ])
 
         unverified = reply.lower().startswith("(unverified")
+
         return {
             "verified": not unverified,
             "source": "llm",
@@ -103,32 +126,49 @@ def rag_flower_safety(flower):
         }
 
     except Exception as e:
-        return {"verified": False, "source": "error", "message": str(e)}
+        return {
+            "verified": False,
+            "source": "error",
+            "message": str(e)
+        }
 
+# -----------------------------
+# VERCEL HANDLER  (NOT FLASK)
+# -----------------------------
 def handler(request):
     try:
-        if request.method == "OPTIONS":
+        method = request.get("method", "GET")
+
+        # CORS preflight
+        if method == "OPTIONS":
             return {
                 "statusCode": 204,
                 "headers": {
                     "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
                     "Access-Control-Allow-Headers": "Content-Type"
                 },
                 "body": ""
             }
 
-        if request.method == "GET":
+        # GET = health check
+        if method == "GET":
             return {
                 "statusCode": 200,
                 "headers": {"Content-Type": "application/json"},
                 "body": json.dumps({"status": "ok", "message": "POST to /api/flower-check"})
             }
 
-        data = request.get_json() or {}
-        flower = data.get("flower")
+        # POST request body (Vercel format)
+        raw_body = request.get("body") or "{}"
+        data = json.loads(raw_body)
 
+        flower = data.get("flower")
         result = rag_flower_safety(flower)
+
+        # Unverified LLM fallback gets disclaimer
+        if result.get("source") == "llm" and not result.get("verified"):
+            result["note"] = "AI-generated (unverified). Consult a vet."
 
         return {
             "statusCode": 200,
@@ -145,4 +185,3 @@ def handler(request):
             "headers": {"Content-Type": "application/json"},
             "body": json.dumps({"error": str(e)})
         }
-
