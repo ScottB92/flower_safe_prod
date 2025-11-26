@@ -3,11 +3,6 @@
   "version": 2,
   "builds": [
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
-    },
-    {
       "src": "api/*.py",
       "use": "@vercel/python"
     }
@@ -17,9 +12,7 @@
     "api/flower-check.py": { "runtime": "python3.11" }
   },
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
+    { "src": "/api/index", "dest": "/api/index.py" },
+    { "src": "/api/flower-check", "dest": "/api/flower-check.py" }
   ]
 }
