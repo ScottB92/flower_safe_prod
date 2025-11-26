@@ -10,14 +10,6 @@
       "use": "@vercel/static"
     }
   ],
-  "functions": {
-    "api/index.py": {
-      "runtime": "python3.11"
-    },
-    "api/flower-check.py": {
-      "runtime": "python3.11"
-    }
-  },
   "routes": [
     {
       "src": "/api/index",
